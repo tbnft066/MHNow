@@ -105,6 +105,7 @@
   .equip{white-space:pre-wrap; line-height:1.5; color:#eaeaea; margin:0 0 8px 0}
   .hr{height:1px; background:var(--border); margin:8px 0}
   .sumAll{display:flex; flex-wrap:wrap; gap:8px 12px; margin:0; padding:0}
+  
   .badge{
     list-style:none; border:1px solid var(--border); border-radius:999px;
     padding:2px 8px; font-size:12px; color:var(--skill); background:#141414;
@@ -705,7 +706,7 @@ shownCombos.add(comboKey);
       const div=document.createElement('div');
       div.className='card';
       div.innerHTML = x;
-      resultsSim.appendChild(div);
+      resultsBox.appendChild(div);
     });
   }
 
@@ -778,3 +779,4 @@ function escapeRegExp(s){
 </script>
 </body>
 </html>
+
