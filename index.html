@@ -138,6 +138,26 @@
     top: 0;
     background: #141414;
   }
+
+  @media (max-width: 768px) {
+    body {
+      display: block;
+      height: auto;
+    }
+    .left {
+      width: 100%;
+      border-right: none;
+    }
+    .right {
+      display: none; /* 右パネルを隠す */
+    }
+    #resultsSim {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 10px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -397,7 +417,21 @@ document.getElementById('reset').addEventListener('click', ()=>{
 
 /* ====== 検索本体（完全対応版） ====== */
 function runSearch(){
-  const resultsBox = resultsSim;
+  // スマホ（幅768px以下）の場合は左パネル内に結果を出す
+const resultsBox = window.innerWidth <= 768
+  ? (() => {
+      let area = document.getElementById("mobileResults");
+      if (!area) {
+        area = document.createElement("div");
+        area.id = "mobileResults";
+        area.className = "grid";
+        const ref = document.getElementById("search").parentNode;
+        ref.parentNode.insertBefore(area, ref.nextSibling);
+      }
+      return area;
+    })()
+  : resultsSim;
+
   const progressEl = document.getElementById('progress');
   const floatEl = document.getElementById('progressFloating');
   resultsBox.innerHTML = "";
