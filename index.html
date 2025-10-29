@@ -138,6 +138,49 @@
     top: 0;
     background: #141414;
   }
+
+/* ===== スマホ表示時の防具一覧（カード形式） ===== */
+@media (max-width: 640px) {
+  .tableWrap {
+    border: none;
+    overflow: visible;
+    max-height: none;
+  }
+  table.sticky-header,
+  table.sticky-header thead,
+  table.sticky-header tbody,
+  table.sticky-header th,
+  table.sticky-header td,
+  table.sticky-header tr {
+    display: block;
+    width: 100%;
+  }
+  table.sticky-header thead {
+    display: none; /* ヘッダー非表示 */
+  }
+  table.sticky-header tr {
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card);
+    box-shadow: 0 0 8px rgba(0,0,0,0.25);
+    padding: 10px;
+  }
+  table.sticky-header td {
+    border: none;
+    padding: 4px 0;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  table.sticky-header td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight: bold;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -590,16 +633,17 @@ function buildListTable(){
     });
 
     body.innerHTML = list.map(a=>{
-      const normalStr = a.normal.map(s=>`${escapeHTML(s.name)}Lv${s.lv}`).join(", ");
-      const driftStr  = a.drift.length ? a.drift.map(escapeHTML).join(", ") : "—";
-      return `<tr>
-        <td>${escapeHTML(a.part)}</td>
-        <td>${escapeHTML(a.monster||"")}</td>
-        <td>${escapeHTML(a.name)}</td>
-        <td class="td-skills">${normalStr||"—"}</td>
-        <td class="td-skills">${driftStr}</td>
-      </tr>`;
-    }).join("");
+  const normalStr = a.normal.map(s=>`${escapeHTML(s.name)}Lv${s.lv}`).join(", ");
+  const driftStr  = a.drift.length ? a.drift.map(escapeHTML).join(", ") : "—";
+  return `<tr>
+    <td data-label="部位">${escapeHTML(a.part)}</td>
+    <td data-label="モンスター">${escapeHTML(a.monster||"")}</td>
+    <td data-label="防具名">${escapeHTML(a.name)}</td>
+    <td data-label="通常スキル" class="td-skills">${normalStr||"—"}</td>
+    <td data-label="錬成スキル" class="td-skills">${driftStr}</td>
+  </tr>`;
+}).join("");
+
 
     countEl.textContent = `${list.length} 件表示（総計 ${armors.length}）` + (listDriftOnly ? "（錬成のみ）" : "");
   }
