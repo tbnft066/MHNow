@@ -105,7 +105,6 @@
   .equip{white-space:pre-wrap; line-height:1.5; color:#eaeaea; margin:0 0 8px 0}
   .hr{height:1px; background:var(--border); margin:8px 0}
   .sumAll{display:flex; flex-wrap:wrap; gap:8px 12px; margin:0; padding:0}
-  
   .badge{
     list-style:none; border:1px solid var(--border); border-radius:999px;
     padding:2px 8px; font-size:12px; color:var(--skill); background:#141414;
@@ -138,26 +137,6 @@
     position: sticky;
     top: 0;
     background: #141414;
-  }
-
-  @media (max-width: 768px) {
-    body {
-      display: block;
-      height: auto;
-    }
-    .left {
-      width: 100%;
-      border-right: none;
-    }
-    .right {
-      display: none; /* 右パネルを隠す */
-    }
-    #resultsSim {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 12px;
-      margin-top: 10px;
-    }
   }
 </style>
 </head>
@@ -258,22 +237,6 @@
   <div id="progressFloating" class="progressFloating" style="display:none;">探索待機中…</div>
 
 <script>
-
-// ====== ページ読み込み時にCSVを自動読込 ======
-window.addEventListener('DOMContentLoaded', () => {
-  fetch('スキル一覧251028.csv')
-    .then(res => res.text())
-    .then(text => {
-      parseCSV(text);
-      statusEl.textContent = `初期データ読込完了：${armors.length}件（スキル候補 ${skillSet.size}）`;
-    })
-    .catch(err => {
-      console.error('初期CSV読み込みエラー:', err);
-      statusEl.textContent = "初期CSV読み込みに失敗しました。";
-    });
-});
-
-
 /* ====== データ構造 ====== */
 const PARTS = ["頭","胴","腕","腰","脚"];
 let armors = []; // {part, monster, name, normal:[{name,lv}], drift:[string]}
@@ -433,287 +396,167 @@ document.getElementById('reset').addEventListener('click', ()=>{
 });
 
 /* ====== 検索本体（完全対応版） ====== */
+/* ====== 検索本体（安定版） ====== */
 function runSearch(){
-  // スマホ（幅768px以下）の場合は左パネル内に結果を出す
-const resultsBox = window.innerWidth <= 768
-  ? (() => {
-      let area = document.getElementById("mobileResults");
-      if (!area) {
-        area = document.createElement("div");
-        area.id = "mobileResults";
-        area.className = "grid";
-        const ref = document.getElementById("search").parentNode;
-        ref.parentNode.insertBefore(area, ref.nextSibling);
-      }
-      return area;
-    })()
-  : resultsSim;
-
+  const resultsBox = resultsSim;
   const progressEl = document.getElementById('progress');
   const floatEl = document.getElementById('progressFloating');
   resultsBox.innerHTML = "";
   progressEl.textContent = "";
 
-  // 🔄 検索ごとに重複判定を初期化
   const shownCombos = new Set();
-
-  if(armors.length===0){
+  if (armors.length === 0) {
     resultsBox.innerHTML = cardHTML("データ未読込", "CSVを読み込んでください。");
     return;
   }
 
-  // 条件取得（Lv空欄/0は除外）
+  // === 条件取得 ===
   const conds = [];
-  for(let i=0;i<8;i++){
-    const sEl = document.getElementById(`s_${i}`);
-    const lEl = document.getElementById(`lv_${i}`);
-    const s = (sEl?.value || "").trim();
-    const lv = parseInt(lEl?.value || "",10);
-    if(s && !isNaN(lv) && lv>0 && !lEl.disabled){
-      conds.push({skill:s, level:Math.min(5, Math.max(1,lv))});
-    }
+  for (let i = 0; i < 8; i++) {
+    const s = (document.getElementById(`s_${i}`)?.value || "").trim();
+    const lv = parseInt(document.getElementById(`lv_${i}`)?.value || "", 10);
+    if (s && !isNaN(lv) && lv > 0) conds.push({ skill: s, level: lv });
   }
 
-  // ロックオンON時は自動付与（入力が空でも動作）
-  if (rockOnEnabled) {
-    const idx = conds.findIndex(c => c.skill === "ロックオン");
-    if (idx === -1) conds.push({ skill: "ロックオン", level: 1 });
-    else conds[idx].level = Math.max(1, conds[idx].level || 1);
-  }
+  if (rockOnEnabled && !conds.some(c => c.skill === "ロックオン"))
+    conds.push({ skill: "ロックオン", level: 1 });
 
-  // 入力が完全に空でロックオンOFFの場合はエラー
   if (conds.length === 0) {
-    resultsBox.innerHTML = cardHTML("条件不足", "スキル名を入力するか、ロックオンをONにしてね。");
+    resultsBox.innerHTML = cardHTML("条件不足", "スキル名を入力してね。");
     return;
   }
 
-  // 条件スキルを含む防具だけ抽出（事前絞り込み）
-  const byPart = { "頭":[], "胴":[], "腕":[], "腰":[], "脚":[] };
-  for(const a of armors){
-    if(!byPart[a.part]) continue;
-    const hasRelevant =
-      conds.some(c => a.normal.some(s=>s.name===c.skill)) ||
-      (driftEnabled && conds.some(c => a.drift.includes(c.skill)));
-    if(hasRelevant) byPart[a.part].push(a);
-  }
-
-  const hasAnyHit = Object.values(byPart).some(arr => arr.length > 0);
-  if(!hasAnyHit){
-    resultsBox.innerHTML = cardHTML("候補不足", "条件スキルを含む防具が見つかりませんでした。");
-    return;
-  }
-
-  // 実在部位のみで組合せを回す
-  const activeParts = Object.entries(byPart).filter(([_, arr]) => arr.length > 0);
-  function* generateCombos(parts, index=0, current={}) {
-    if(index >= parts.length){ yield current; return; }
-    const [part, items] = parts[index];
-    for(const item of items){
-      yield* generateCombos(parts, index+1, {...current, [part]: item});
+  // === 条件スキルを含む防具だけ抽出 ===
+  const byPart = { 頭: [], 胴: [], 腕: [], 腰: [], 脚: [] };
+  for (const a of armors) {
+    if (
+      conds.some(c => a.normal.some(s => s.name === c.skill)) ||
+      (driftEnabled && conds.some(c => a.drift.includes(c.skill)))
+    ) {
+      byPart[a.part].push(a);
     }
   }
 
-  const totalLoops = activeParts.reduce((acc, [_, arr]) => acc * arr.length, 1);
+  const activeParts = Object.entries(byPart).map(([p, v]) => {
+  return [p, v.length > 0 ? [...v, null] : [null]];
+});
+
+  if (activeParts.length === 0) {
+    resultsBox.innerHTML = cardHTML("候補なし", "条件スキルを含む防具がありません。");
+    return;
+  }
+
+  // === 各部位：条件スキルLv降順でソート ===
+for (const [_, list] of activeParts) {
+  list.sort((a, b) => {
+    const getCondLv = (armor) => {
+      if (!armor) return 0; // ← ★空き枠（null）対策を追加
+      return conds.reduce((sum, c) => {
+        let n = armor.normal.find(s => s.name === c.skill)?.lv || 0;
+        let d = (driftEnabled && armor.drift.includes(c.skill)) ? 1 : 0;
+        return sum + n + d;
+      }, 0);
+    };
+    return getCondLv(b) - getCondLv(a);
+  });
+}
+
+
+
+  function* generateCombos(parts, i = 0, current = {}) {
+    if (i >= parts.length) {
+      yield current;
+      return;
+    }
+    const [p, items] = parts[i];
+    for (const it of items) yield* generateCombos(parts, i + 1, { ...current, [p]: it });
+  }
+
+  const hits = [];
   let checked = 0;
   floatEl.style.display = "block";
-  floatEl.textContent = `探索中… 0%（0 / ${totalLoops.toLocaleString()}）`;
 
-  const MAX_OUT = 10;
-  const hits = [];
-
-// ===== 単一スキル検索時は単純リスト表示モード =====
-if (conds.length === 1) {
-  const target = conds[0].skill;
-  const targetLv = conds[0].level;
-  const hits = [];
-  for (const a of armors) {
-    const hasNormal = a.normal.some(s => s.name === target && s.lv >= targetLv);
-    const hasDrift = driftEnabled && a.drift.includes(target);
-    if (hasNormal || hasDrift) {
-      const normalStr = a.normal.map(s=>`${s.name}Lv${s.lv}`).join(", ");
-      const driftStr  = a.drift.length ? a.drift.join(", ") : "—";
-      const html =
-        `<h3>${escapeHTML(a.part)}：${escapeHTML(a.name)}</h3>`+
-        `<p class="equip">${escapeHTML(a.monster||"")}</p>`+
-        `<div class="hr"></div>`+
-        `<ul class="sumAll"><li class="badge hilite">${escapeHTML(target)} Lv${targetLv}</li></ul>`+
-        `<p class="drifts">通常：${escapeHTML(normalStr)}<br>錬成：${escapeHTML(driftStr)}</p>`;
-      hits.push(html);
-      if(hits.length>=MAX_OUT) break;
-    }
-  }
-
-  resultsBox.innerHTML = hits.length ?
-    hits.map(h=>`<div class="card">${h}</div>`).join("") :
-    cardHTML("結果 0件", "該当スキルを持つ防具が見つかりませんでした。");
-  progressEl.textContent = `探索完了：${hits.length}件`;
-  floatEl.textContent = `探索完了：${hits.length}件`;
-  return;
-}
-
-
-  outer:
-  for(const combo of generateCombos(activeParts)){
-    const itemsByPart = {
-      "頭": combo["頭"] || {},
-      "胴": combo["胴"] || {},
-      "腕": combo["腕"] || {},
-      "腰": combo["腰"] || {},
-      "脚": combo["脚"] || {},
-    };
-
+  outer: for (const combo of generateCombos(activeParts)) {
     checked++;
-    if(checked % 500 === 0 || checked === totalLoops){
-      const pct = Math.floor(checked/totalLoops*100);
-      const msg = `探索中… ${pct}%（${checked.toLocaleString()} / ${totalLoops.toLocaleString()}）`;
-      progressEl.textContent = msg;
-      floatEl.textContent = msg;
-    }
-
-    // 合計スキル集計（条件に関係する部位のみ）
     const totalMap = {};
-    const contribByPart = { "頭":{}, "胴":{}, "腕":{}, "腰":{}, "脚":{} };
-    const condNames = new Set(conds.map(c=>c.skill));
-    const usedParts = new Set();
-
     for (const p of PARTS) {
-      const item = itemsByPart[p];
-      if(!item.normal && !item.drift) continue;
-      const relevant = conds.some(c =>
-        item.normal?.some(s => s.name === c.skill) ||
-        (driftEnabled && item.drift?.includes(c.skill))
-      );
-      if(relevant) usedParts.add(p);
+      const item = combo[p];
+      if (!item) continue;
+      for (const { name, lv } of item.normal) totalMap[name] = (totalMap[name] || 0) + lv;
+      if (driftEnabled)
+        for (const ds of item.drift) totalMap[ds] = (totalMap[ds] || 0) + 1;
     }
 
-    for (const p of PARTS) {
-      const item = itemsByPart[p];
-      if (!usedParts.has(p)) continue;
-      for (const { name, lv } of (item.normal || [])) {
-        totalMap[name] = (totalMap[name] || 0) + lv;
-        if (condNames.has(name)) {
-          contribByPart[p][name] = (contribByPart[p][name] || 0) + lv;
-        }
-      }
-      if (driftEnabled) {
-        for (const ds of (item.drift || [])) {
-          if (condNames.has(ds)) {
-            totalMap[ds] = (totalMap[ds] || 0) + 1;
-            contribByPart[p][ds] = (contribByPart[p][ds] || 0) + 1;
-          }
-        }
-      }
-    }
+    // === 条件Lv満たすか ===
+    const ok = conds.every(c => (totalMap[c.skill] || 0) >= c.level);
+    if (!ok) continue;
 
-    // 条件チェック
-    const ok = conds.every(c => (totalMap[c.skill]||0) >= c.level);
-    if(!ok) continue;
 
-    // // 表示対象部位の決定
-const shownParts = new Set();
-if (conds.length === 1) {
-  // 単一スキル検索：そのスキルを持つすべての部位を表示
-  const target = conds[0].skill;
-  for (const p of PARTS) {
-    const item = itemsByPart[p];
-    const hit = item.normal?.some(s => s.name === target) ||
-                (driftEnabled && item.drift?.includes(target));
-    if (hit) shownParts.add(p); // breakなし！
+    // === 重複除外 ===
+    const comboKey = PARTS.map(p => combo[p]?.name || "").join("|");
+    if (shownCombos.has(comboKey)) continue;
+    shownCombos.add(comboKey);
+
+    // === 出力構築 ===
+    const text = PARTS.map(p => `${p}：${combo[p]?.name || ""}`).join("\n");
+    const skills = Object.entries(totalMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([n, l]) => `<li class="badge${conds.some(c => c.skill === n) ? " hilite" : ""}">${n} Lv${l}</li>`)
+      .join("");
+
+    hits.push(`<h3>#${hits.length + 1}</h3><p class="equip">${text}</p><div class="hr"></div><ul class="sumAll">${skills}</ul>`);
+
+    if (hits.length >= 300) break outer; // 安全ストップ
   }
-  if (shownParts.size === 0) continue;
-} else {
-  // 複数スキル時：条件達成に寄与した部位のみ
-  const remaining = {}; conds.forEach(c => remaining[c.skill] = c.level);
-  for(const p of PARTS){
-    const contrib = contribByPart[p]; if(!contrib) continue;
-    let contributes = false;
-    for(const [sk, val] of Object.entries(contrib)){
-      if((remaining[sk]||0) > 0 && val > 0){ contributes = true; break; }
-    }
-    if(contributes){
-      shownParts.add(p);
-      for(const [sk, val] of Object.entries(contrib)){
-        if(remaining[sk] > 0) remaining[sk] = Math.max(0, remaining[sk] - val);
-      }
-    }
-    if(Object.values(remaining).every(v=>v===0)) break;
+
+ // === スコア算出して順位調整付きソート ===
+const scoredHits = hits.map(html => {
+  const lvMap = {};
+  const matches = [...html.matchAll(/([^<>\s]+) Lv(\d+)/g)];
+  for (const m of matches) {
+    const name = m[1], lv = parseInt(m[2]);
+    lvMap[name] = (lvMap[name] || 0) + lv;
   }
+
+  // 基本スコア = 全スキルLv合計
+  let score = Object.values(lvMap).reduce((s, v) => s + v, 0);
+
+  // 条件スキル過不足ペナルティ／ボーナス
+  for (const c of conds) {
+    const got = lvMap[c.skill] || 0;
+    if (got < c.level) score -= 100;              // 未達は重くペナルティ
+    else if (got > c.level) score -= (got - c.level) * 3; // 超過は軽く下げる
+    else score += 10;                             // ぴったり達成はボーナス
+  }
+
+  // 使用部位が少ないほど少しボーナス
+  const partsUsed = (html.match(/：[^<>\n]+/g) || []).length;
+  score += (5 - partsUsed) * 200;
+
+  return { html, score };
+});
+
+// スコア降順に並べて上位50件
+scoredHits.sort((a, b) => b.score - a.score);
+const topHits = scoredHits.slice(0, 50);
+
+if (topHits.length === 0)
+  resultsBox.innerHTML = cardHTML("結果 0件", "条件に合う装備は見つかりませんでした。");
+else
+  topHits.forEach(x => {
+    const div = document.createElement("div");
+    div.className = "card";
+    div.innerHTML = x.html;
+    resultsBox.appendChild(div);
+  });
+
+const msg = `探索完了：${checked.toLocaleString()}件（ヒット ${hits.length}件）`;
+progressEl.textContent = msg;
+floatEl.textContent = msg;
+
 }
 
-    // 装備テキスト
-    const eqParts = {};
-    for (const p of PARTS) {
-      eqParts[p] = shownParts.has(p) ? (itemsByPart[p].name || "") : "";
-    }
-    const equipText =
-      `頭：${eqParts["頭"]}\n胴：${eqParts["胴"]}\n腕：${eqParts["腕"]}\n腰：${eqParts["腰"]}\n脚：${eqParts["脚"]}`;
 
-    // 表示スキル（表示中の部位のみ）
-    let displaySkills = {};
-    const usedDriftSetDisplay = new Set();
-    for (const p of PARTS) {
-      if (!shownParts.has(p)) continue;
-      const item = itemsByPart[p];
-      for (const { name, lv } of (item.normal || [])) {
-        displaySkills[name] = (displaySkills[name] || 0) + lv;
-      }
-      if (driftEnabled) {
-        for (const ds of (item.drift || [])) {
-          usedDriftSetDisplay.add(ds);
-          displaySkills[ds] = (displaySkills[ds] || 0) + 1;
-        }
-      }
-    }
-
-    const allSkills = Object.entries(displaySkills)
-      .sort((a,b)=> (b[1]-a[1]) || a[0].localeCompare(b[0]));
-    const allSkillBadges = allSkills.map(([name,lv])=>{
-      const cls = condNames.has(name) ? "badge hilite" : "badge";
-      return `<li class="${cls}">${escapeHTML(name)} Lv${lv}</li>`;
-    }).join("");
-
-    const driftText = driftEnabled
-      ? (usedDriftSetDisplay.size ? `使用錬成スキル：${[...usedDriftSetDisplay].sort().map(escapeHTML).join(", ")}` : `使用錬成スキル：なし`)
-      : `使用錬成スキル：OFF`;
-
-    const html =
-      `<h3>#${hits.length+1}</h3>`+
-      `<p class="equip">${escapeHTML(equipText)}</p>`+
-      `<div class="hr"></div>`+
-      `<ul class="sumAll">${allSkillBadges}</ul>`+
-      `<p class="drifts">${driftText}</p>`;
-
-// ===== 重複防止：同じ防具は1回しか出さない =====
-const comboKey =
-  PARTS.map(p => shownParts.has(p) ? (itemsByPart[p]?.name || "") : "").join("|") + "|" +
-  Object.entries(displaySkills).sort().map(([n,l]) => `${n}:${l}`).join(",") + "|" +
-  [...usedDriftSetDisplay].sort().join(",");
-
-// 見た目が完全に同じ場合だけスキップ
-if (shownCombos.has(comboKey)) continue;
-shownCombos.add(comboKey);
-
-    hits.push(html);
-    if(hits.length >= MAX_OUT) break outer;
-  }
-
-  // 表示
-  resultsBox.innerHTML = "";
-  if(hits.length===0){
-    resultsBox.innerHTML = cardHTML("結果 0件", "条件に合う組み合わせは見つかりませんでした。");
-  }else{
-    hits.forEach(x=>{
-      const div=document.createElement('div');
-      div.className='card';
-      div.innerHTML = x;
-      resultsBox.appendChild(div);
-    });
-  }
-
-  const finalMsg = `探索完了：${checked.toLocaleString()} / ${totalLoops.toLocaleString()}（ヒット ${hits.length}件）`;
-  progressEl.textContent = finalMsg;
-  floatEl.textContent = finalMsg;
-}
 
 /* ====== 一覧タブ：構築＆フィルタ ====== */
 function buildListTable(){
@@ -776,7 +619,41 @@ function escapeHTML(s){
 function escapeRegExp(s){
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+// ===== スマホ時は結果を検索ボタンの下に移動 =====
+function adjustLayoutForMobile() {
+  const resultsSim = document.getElementById("resultsSim");
+  const panelSim = document.getElementById("panel-sim");
+  if (window.innerWidth <= 640) {
+    if (!panelSim.contains(resultsSim)) {
+      panelSim.appendChild(resultsSim);
+      resultsSim.style.display = "block";
+    }
+  } else {
+    const right = document.querySelector(".right");
+    if (!right.contains(resultsSim)) {
+      right.prepend(resultsSim);
+      resultsSim.style.display = "grid";
+    }
+  }
+}
+window.addEventListener("resize", adjustLayoutForMobile);
+window.addEventListener("DOMContentLoaded", adjustLayoutForMobile);
+
+// ====== ページ読み込み時にCSVを自動読込 ======
+window.addEventListener('DOMContentLoaded', () => {
+  fetch('スキル一覧.csv')
+    .then(res => res.text())
+    .then(text => {
+      parseCSV(text);
+      statusEl.textContent = `初期データ読込完了：${armors.length}件（スキル候補 ${skillSet.size}）`;
+    })
+    .catch(err => {
+      console.error('初期CSV読み込みエラー:', err);
+      statusEl.textContent = "初期CSV読み込みに失敗しました。";
+    });
+});
+
 </script>
 </body>
 </html>
-
