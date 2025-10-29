@@ -257,6 +257,22 @@
   <div id="progressFloating" class="progressFloating" style="display:none;">探索待機中…</div>
 
 <script>
+
+// ====== ページ読み込み時にCSVを自動読込 ======
+window.addEventListener('DOMContentLoaded', () => {
+  fetch('スキル一覧251028.csv')
+    .then(res => res.text())
+    .then(text => {
+      parseCSV(text);
+      statusEl.textContent = `初期データ読込完了：${armors.length}件（スキル候補 ${skillSet.size}）`;
+    })
+    .catch(err => {
+      console.error('初期CSV読み込みエラー:', err);
+      statusEl.textContent = "初期CSV読み込みに失敗しました。";
+    });
+});
+
+
 /* ====== データ構造 ====== */
 const PARTS = ["頭","胴","腕","腰","脚"];
 let armors = []; // {part, monster, name, normal:[{name,lv}], drift:[string]}
