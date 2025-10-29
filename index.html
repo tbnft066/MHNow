@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>モンハンNow スキルシュミレーター</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --bg:#0d0d0d; --panel:#171717; --card:#1f1f1f;
+    --text:#ffffff; --muted:#bfbfbf; --accent:#ffd45e; --accent2:#ffb347; --border:#2a2a2a;
+    --hilite:#ffe27a; --skill:#e6e6e6; --drift:#a7dcff;
+    --green:#2ecc71; --purple:#bb86fc; --off:#555; --blue:#4da3ff;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    height:100vh; display:grid; grid-template-columns:460px 1fr;
+  }
+  /* 左パネル */
+  .left{
+    background:var(--panel); border-right:1px solid var(--border);
+    padding:18px; overflow:auto;
+  }
+  .title{color:var(--accent); font-size:20px; font-weight:700; margin-bottom:12px}
+  .tabs{display:flex; gap:8px; margin-bottom:14px}
+  .tab{
+    padding:8px 12px; border:1px solid var(--border); border-radius:10px;
+    background:#101010; color:#ddd; cursor:pointer; font-weight:700; font-size:14px;
+  }
+  .tab.active{background:var(--accent); color:#111; border-color:#cdbf65}
+
+  .group{margin-bottom:16px}
+  label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px}
+  input, select, button{
+    width:100%; border:1px solid var(--border); background:#101010; color:#fff;
+    border-radius:8px; padding:9px 10px; font-size:14px;
+  }
+  input:disabled{opacity:.55; cursor:not-allowed}
+  button{background:var(--accent); color:#111; border:none; font-weight:700; cursor:pointer}
+  button:hover{filter:brightness(1.05)}
+  .rows{display:grid; grid-template-columns:1fr 84px; gap:8px}
+  .status{font-size:12px; color:var(--muted); white-space:pre-line; margin-top:6px}
+
+  /* ==== 丸ノブ風トグル ==== */
+  .toggles {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 10px;
+  }
+  .toggle-block {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* 丸ノブ本体 */
+  .dot {
+    width: 42px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--off);
+    border: 2px solid var(--border);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.25s, border-color 0.25s;
+  }
+  .dot::before {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: #ccc;
+    border-radius: 50%;
+    transition: left 0.25s, background 0.25s;
+  }
+
+  /* ON時スライド（色ごとに違う） */
+  .dot.green.on { background: var(--green); border-color: var(--green); }
+  .dot.green.on::before { left: 22px; background: #fff; }
+
+  .dot.purple.on { background: var(--purple); border-color: var(--purple); }
+  .dot.purple.on::before { left: 22px; background: #fff; }
+
+  .dot.blue.on { background: var(--blue); border-color: var(--blue); }
+  .dot.blue.on::before { left: 22px; background: #fff; }
+
+  /* OFF時 */
+  .dot.off { background: var(--off); border-color: var(--border); }
+  .dot.off::before { left: 2px; background: #888; }
+
+  .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* 右パネル＋カード */
+  .right{padding:18px; overflow:auto}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(420px,1fr)); gap:16px}
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px 14px;
+    box-shadow:0 0 10px rgba(0,0,0,0.35);
+  }
+  .card h3{margin:0 0 8px 0; color:var(--accent2); font-size:16px}
+  .equip{white-space:pre-wrap; line-height:1.5; color:#eaeaea; margin:0 0 8px 0}
+  .hr{height:1px; background:var(--border); margin:8px 0}
+  .sumAll{display:flex; flex-wrap:wrap; gap:8px 12px; margin:0; padding:0}
+  .badge{
+    list-style:none; border:1px solid var(--border); border-radius:999px;
+    padding:2px 8px; font-size:12px; color:var(--skill); background:#141414;
+    white-space:nowrap;
+  }
+  .badge.hilite{color:#111; background:var(--hilite); border-color:#cdbf65}
+  .drifts{color:var(--drift); font-size:12px; margin-top:6px}
+
+  /* 右上固定の進捗表示 */
+  .progressFloating{
+    position:fixed; top:12px; right:16px;
+    background:#000a; backdrop-filter: blur(4px);
+    border:1px solid var(--border); border-radius:10px;
+    padding:8px 12px; font-size:12px; color:var(--muted); z-index:9999;
+    pointer-events:none;
+  }
+
+  /* 一覧タブのテーブル */
+  .list-controls{display:flex; gap:8px; position:sticky; top:0; background:var(--panel); padding-bottom:8px; z-index:2; align-items:center}
+  .tableWrap{border:1px solid var(--border); border-radius:12px; overflow:auto; max-height:calc(100vh - 200px)}
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  thead{background:#141414; z-index:1}
+  th, td{border-bottom:1px solid var(--border); padding:8px 10px; vertical-align:top}
+  th{color:#ddd; text-align:left}
+  td{color:#eee}
+  .td-skills{color:#ddd}
+  .muted{color:#aaa; font-size:12px}
+  /* ★ ヘッダー固定 */
+  .sticky-header thead th{
+    position: sticky;
+    top: 0;
+    background: #141414;
+  }
+</style>
+</head>
+<body>
+  <aside class="left">
+    <div class="title">モンハンNow スキルシュミレーター</div>
+
+    <!-- タブ -->
+    <div class="tabs">
+      <button class="tab active" id="tab-sim">スキルシミュレーター</button>
+      <button class="tab" id="tab-list">防具スキル一覧</button>
+    </div>
+
+    <!-- CSV読み込み -->
+    <div class="group">
+      <label>CSVを読み込む（ヘッダー必須 / UTF-8）</label>
+      <input type="file" id="csv" accept=".csv" />
+      <div id="status" class="status">未読込</div>
+    </div>
+
+    <!-- シミュレーター設定 -->
+    <div id="panel-sim">
+      <div class="group">
+        <div class="toggles">
+          <div class="toggle-block">
+            <div class="dot green off" id="toggleRock" title="ロックオン ON/OFF" aria-label="ロックオン"></div>
+            <span class="hint">ロックオン</span>
+          </div>
+          <div class="toggle-block">
+            <div class="dot purple off" id="toggleDrift" title="漂移錬成 ON/OFF" aria-label="漂移錬成"></div>
+            <span class="hint">漂移錬成</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <label>スキル条件（最大8個） ※Lv1〜5／Lv空欄は条件から除外</label>
+        <div class="rows" id="rows"></div>
+      </div>
+
+      <div class="group">
+        <button id="search">検索</button>
+        <button id="reset" style="margin-top:6px; background:#555; color:#fff;">リセット</button>
+        <div id="progress" class="status"></div>
+      </div>
+    </div>
+
+    <!-- 一覧タブの操作 -->
+    <div id="panel-list" style="display:none;">
+      <div class="group">
+        <label>フィルター</label>
+        <div class="list-controls">
+          <select id="flt-part">
+            <option value="">部位：すべて</option>
+            <option>頭</option>
+            <option>胴</option>
+            <option>腕</option>
+            <option>腰</option>
+            <option>脚</option>
+          </select>
+          <input id="flt-skill" placeholder="スキル名で検索（部分一致／通常・錬成）" />
+        </div>
+
+        <!-- 「錬成のみ」トグル -->
+        <div class="toggle-block" title="錬成スキルだけ表示" style="margin-top: 10px;">
+          <div class="dot blue off" id="toggleListDrift" aria-label="錬成フィルタ"></div>
+          <span class="hint">錬成のみ</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="right">
+    <!-- シミュレータ結果 -->
+    <div id="resultsSim" class="grid"></div>
+
+    <!-- 一覧 表 -->
+    <div id="resultsList" style="display:none;">
+      <div class="tableWrap">
+        <table id="armorTable" class="sticky-header">
+          <thead>
+            <tr>
+              <th style="width:60px;">部位</th>
+              <th style="width:170px;">モンスター</th>
+              <th style="width:200px;">防具名</th>
+              <th>通常スキル</th>
+              <th>錬成スキル</th>
+            </tr>
+          </thead>
+          <tbody id="listBody"></tbody>
+        </table>
+      </div>
+      <div class="muted" id="listCount" style="margin-top:6px;"></div>
+    </div>
+  </main>
+
+  <!-- 右上固定の進捗％ -->
+  <div id="progressFloating" class="progressFloating" style="display:none;">探索待機中…</div>
+
+<script>
+/* ====== データ構造 ====== */
+const PARTS = ["頭","胴","腕","腰","脚"];
+let armors = []; // {part, monster, name, normal:[{name,lv}], drift:[string]}
+let skillSet = new Set();
+
+/* ====== トグル状態 ====== */
+let rockOnEnabled = false; // ロックオン（緑）
+let driftEnabled  = false; // 漂移錬成（紫）
+let listDriftOnly = false; // 一覧タブ 錬成のみ
+
+/* ====== 要素参照 ====== */
+const statusEl = document.getElementById('status');
+const resultsSim = document.getElementById('resultsSim');
+const resultsList = document.getElementById('resultsList');
+const panelSim = document.getElementById('panel-sim');
+const panelList = document.getElementById('panel-list');
+const tabSim = document.getElementById('tab-sim');
+const tabList = document.getElementById('tab-list');
+
+/* ====== タブ切替 ====== */
+tabSim.addEventListener('click', ()=>{
+  tabSim.classList.add('active'); tabList.classList.remove('active');
+  panelSim.style.display='block'; panelList.style.display='none';
+  resultsSim.style.display='grid'; resultsList.style.display='none';
+});
+tabList.addEventListener('click', ()=>{
+  tabList.classList.add('active'); tabSim.classList.remove('active');
+  panelList.style.display='block'; panelSim.style.display='none';
+  resultsList.style.display='block'; resultsSim.style.display='none';
+});
+
+/* ====== トグル操作 ====== */
+const toggleRock  = document.getElementById('toggleRock');
+const toggleDrift = document.getElementById('toggleDrift');
+const toggleListDrift = document.getElementById('toggleListDrift');
+
+toggleRock.addEventListener('click', ()=>{
+  rockOnEnabled = !rockOnEnabled;
+  toggleRock.classList.toggle('on', rockOnEnabled);
+  toggleRock.classList.toggle('off', !rockOnEnabled);
+});
+toggleDrift.addEventListener('click', ()=>{
+  driftEnabled = !driftEnabled;
+  toggleDrift.classList.toggle('on', driftEnabled);
+  toggleDrift.classList.toggle('off', !driftEnabled);
+});
+toggleListDrift.addEventListener('click', ()=>{
+  listDriftOnly = !listDriftOnly;
+  toggleListDrift.classList.toggle('on', listDriftOnly);
+  toggleListDrift.classList.toggle('off', !listDriftOnly);
+  buildListTable(); // 再描画
+});
+
+/* ====== CSVをページ上で読み込む ====== */
+document.getElementById('csv').addEventListener('change', (e)=>{
+  const f = e.target.files[0]; if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try{
+      parseCSV(ev.target.result);
+      statusEl.textContent = `CSV読み込み完了：${armors.length}件（スキル候補 ${skillSet.size}）`;
+    }catch(err){
+      console.error(err);
+      statusEl.textContent = "CSV解析でエラーが発生しました。";
+    }
+  };
+  reader.readAsText(f, 'utf-8');
+});
+
+/* ====== CSV解析 ====== */
+function parseCSV(text){
+  const lines = text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n").filter(Boolean);
+  const rows = lines.map(line => line.split(",").map(c=>c.trim()));
+  armors = []; skillSet = new Set();
+
+  // 0:部位, 1:モンスター名称, 2:防具名称,
+  // 3:スキル1,4:スキル1Lv, 5:スキル2,6:スキル2Lv, 7:スキル3,8:スキル3Lv,
+  // 9..18: 錬成1..10 (Lv列なし → 1固定)
+  for(let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if(r.length<3) continue;
+    const part = r[0], monster = r[1], name = r[2];
+    if(!part || !name) continue;
+
+    const normal = [];
+    for(let k=0;k<3;k++){
+      const s  = r[3 + k*2];
+      const lv = parseInt(r[4 + k*2],10);
+      if(s && !isNaN(lv) && lv>0){
+        normal.push({name:s, lv});
+        skillSet.add(s);
+      }
+    }
+    const drift = [];
+    for(let j=0;j<10;j++){
+      const ds = r[9 + j];
+      if(ds){
+        drift.push(ds);
+        skillSet.add(ds);
+      }
+    }
+    armors.push({part, monster, name, normal, drift});
+  }
+
+  buildSkillInputs([...skillSet].sort());
+  buildListTable(); // 一覧タブ初期描画
+}
+
+/* ====== シミュレータ入力UI（8枠、Lvはスキル名が空なら無効） ====== */
+function buildSkillInputs(skillList){
+  const rows = document.getElementById('rows');
+  rows.innerHTML = "";
+  const dlId="skills";
+  let old = document.getElementById(dlId); if(old) old.remove();
+  const dl = document.createElement('datalist'); dl.id = dlId;
+  skillList.forEach(s=>{ const o=document.createElement('option'); o.value=s; dl.appendChild(o); });
+  document.body.appendChild(dl);
+
+  for(let i=0;i<8;i++){
+    const name = document.createElement('input');
+    name.type="text"; name.placeholder="スキル名"; name.setAttribute("list", dlId); name.id=`s_${i}`;
+    const lv = document.createElement('input');
+    lv.type="number"; lv.min="1"; lv.max="5"; lv.placeholder="Lv"; lv.id=`lv_${i}`;
+    lv.disabled = true;
+
+    const syncDisable = ()=>{
+      const has = (name.value || "").trim().length > 0;
+      lv.disabled = !has;
+      if(!has) lv.value = "";
+    };
+    name.addEventListener('input', syncDisable);
+    name.addEventListener('change', syncDisable);
+
+    rows.appendChild(name); rows.appendChild(lv);
+  }
+
+  // クリック二重登録を避けるため一旦既存のリスナーを置換
+  const newBtn = document.getElementById('search').cloneNode(true);
+  document.getElementById('search').replaceWith(newBtn);
+  newBtn.id = 'search';
+  newBtn.addEventListener('click', runSearch);
+}
+
+/* ====== リセットボタン処理 ====== */
+document.getElementById('reset').addEventListener('click', ()=>{
+  for(let i=0;i<8;i++){
+    const sEl = document.getElementById(`s_${i}`);
+    const lEl = document.getElementById(`lv_${i}`);
+    if(sEl) sEl.value = "";
+    if(lEl){
+      lEl.value = "";
+      lEl.disabled = true;
+    }
+  }
+  document.getElementById('progress').textContent = "";
+  document.getElementById('resultsSim').innerHTML = "";
+});
+
+/* ====== 検索本体（完全対応版） ====== */
+function runSearch(){
+  const resultsBox = resultsSim;
+  const progressEl = document.getElementById('progress');
+  const floatEl = document.getElementById('progressFloating');
+  resultsBox.innerHTML = "";
+  progressEl.textContent = "";
+
+  // 🔄 検索ごとに重複判定を初期化
+  const shownCombos = new Set();
+
+  if(armors.length===0){
+    resultsBox.innerHTML = cardHTML("データ未読込", "CSVを読み込んでください。");
+    return;
+  }
+
+  // 条件取得（Lv空欄/0は除外）
+  const conds = [];
+  for(let i=0;i<8;i++){
+    const sEl = document.getElementById(`s_${i}`);
+    const lEl = document.getElementById(`lv_${i}`);
+    const s = (sEl?.value || "").trim();
+    const lv = parseInt(lEl?.value || "",10);
+    if(s && !isNaN(lv) && lv>0 && !lEl.disabled){
+      conds.push({skill:s, level:Math.min(5, Math.max(1,lv))});
+    }
+  }
+
+  // ロックオンON時は自動付与（入力が空でも動作）
+  if (rockOnEnabled) {
+    const idx = conds.findIndex(c => c.skill === "ロックオン");
+    if (idx === -1) conds.push({ skill: "ロックオン", level: 1 });
+    else conds[idx].level = Math.max(1, conds[idx].level || 1);
+  }
+
+  // 入力が完全に空でロックオンOFFの場合はエラー
+  if (conds.length === 0) {
+    resultsBox.innerHTML = cardHTML("条件不足", "スキル名を入力するか、ロックオンをONにしてね。");
+    return;
+  }
+
+  // 条件スキルを含む防具だけ抽出（事前絞り込み）
+  const byPart = { "頭":[], "胴":[], "腕":[], "腰":[], "脚":[] };
+  for(const a of armors){
+    if(!byPart[a.part]) continue;
+    const hasRelevant =
+      conds.some(c => a.normal.some(s=>s.name===c.skill)) ||
+      (driftEnabled && conds.some(c => a.drift.includes(c.skill)));
+    if(hasRelevant) byPart[a.part].push(a);
+  }
+
+  const hasAnyHit = Object.values(byPart).some(arr => arr.length > 0);
+  if(!hasAnyHit){
+    resultsBox.innerHTML = cardHTML("候補不足", "条件スキルを含む防具が見つかりませんでした。");
+    return;
+  }
+
+  // 実在部位のみで組合せを回す
+  const activeParts = Object.entries(byPart).filter(([_, arr]) => arr.length > 0);
+  function* generateCombos(parts, index=0, current={}) {
+    if(index >= parts.length){ yield current; return; }
+    const [part, items] = parts[index];
+    for(const item of items){
+      yield* generateCombos(parts, index+1, {...current, [part]: item});
+    }
+  }
+
+  const totalLoops = activeParts.reduce((acc, [_, arr]) => acc * arr.length, 1);
+  let checked = 0;
+  floatEl.style.display = "block";
+  floatEl.textContent = `探索中… 0%（0 / ${totalLoops.toLocaleString()}）`;
+
+  const MAX_OUT = 10;
+  const hits = [];
+
+// ===== 単一スキル検索時は単純リスト表示モード =====
+if (conds.length === 1) {
+  const target = conds[0].skill;
+  const targetLv = conds[0].level;
+  const hits = [];
+  for (const a of armors) {
+    const hasNormal = a.normal.some(s => s.name === target && s.lv >= targetLv);
+    const hasDrift = driftEnabled && a.drift.includes(target);
+    if (hasNormal || hasDrift) {
+      const normalStr = a.normal.map(s=>`${s.name}Lv${s.lv}`).join(", ");
+      const driftStr  = a.drift.length ? a.drift.join(", ") : "—";
+      const html =
+        `<h3>${escapeHTML(a.part)}：${escapeHTML(a.name)}</h3>`+
+        `<p class="equip">${escapeHTML(a.monster||"")}</p>`+
+        `<div class="hr"></div>`+
+        `<ul class="sumAll"><li class="badge hilite">${escapeHTML(target)} Lv${targetLv}</li></ul>`+
+        `<p class="drifts">通常：${escapeHTML(normalStr)}<br>錬成：${escapeHTML(driftStr)}</p>`;
+      hits.push(html);
+      if(hits.length>=MAX_OUT) break;
+    }
+  }
+
+  resultsBox.innerHTML = hits.length ?
+    hits.map(h=>`<div class="card">${h}</div>`).join("") :
+    cardHTML("結果 0件", "該当スキルを持つ防具が見つかりませんでした。");
+  progressEl.textContent = `探索完了：${hits.length}件`;
+  floatEl.textContent = `探索完了：${hits.length}件`;
+  return;
+}
+
+
+  outer:
+  for(const combo of generateCombos(activeParts)){
+    const itemsByPart = {
+      "頭": combo["頭"] || {},
+      "胴": combo["胴"] || {},
+      "腕": combo["腕"] || {},
+      "腰": combo["腰"] || {},
+      "脚": combo["脚"] || {},
+    };
+
+    checked++;
+    if(checked % 500 === 0 || checked === totalLoops){
+      const pct = Math.floor(checked/totalLoops*100);
+      const msg = `探索中… ${pct}%（${checked.toLocaleString()} / ${totalLoops.toLocaleString()}）`;
+      progressEl.textContent = msg;
+      floatEl.textContent = msg;
+    }
+
+    // 合計スキル集計（条件に関係する部位のみ）
+    const totalMap = {};
+    const contribByPart = { "頭":{}, "胴":{}, "腕":{}, "腰":{}, "脚":{} };
+    const condNames = new Set(conds.map(c=>c.skill));
+    const usedParts = new Set();
+
+    for (const p of PARTS) {
+      const item = itemsByPart[p];
+      if(!item.normal && !item.drift) continue;
+      const relevant = conds.some(c =>
+        item.normal?.some(s => s.name === c.skill) ||
+        (driftEnabled && item.drift?.includes(c.skill))
+      );
+      if(relevant) usedParts.add(p);
+    }
+
+    for (const p of PARTS) {
+      const item = itemsByPart[p];
+      if (!usedParts.has(p)) continue;
+      for (const { name, lv } of (item.normal || [])) {
+        totalMap[name] = (totalMap[name] || 0) + lv;
+        if (condNames.has(name)) {
+          contribByPart[p][name] = (contribByPart[p][name] || 0) + lv;
+        }
+      }
+      if (driftEnabled) {
+        for (const ds of (item.drift || [])) {
+          if (condNames.has(ds)) {
+            totalMap[ds] = (totalMap[ds] || 0) + 1;
+            contribByPart[p][ds] = (contribByPart[p][ds] || 0) + 1;
+          }
+        }
+      }
+    }
+
+    // 条件チェック
+    const ok = conds.every(c => (totalMap[c.skill]||0) >= c.level);
+    if(!ok) continue;
+
+    // // 表示対象部位の決定
+const shownParts = new Set();
+if (conds.length === 1) {
+  // 単一スキル検索：そのスキルを持つすべての部位を表示
+  const target = conds[0].skill;
+  for (const p of PARTS) {
+    const item = itemsByPart[p];
+    const hit = item.normal?.some(s => s.name === target) ||
+                (driftEnabled && item.drift?.includes(target));
+    if (hit) shownParts.add(p); // breakなし！
+  }
+  if (shownParts.size === 0) continue;
+} else {
+  // 複数スキル時：条件達成に寄与した部位のみ
+  const remaining = {}; conds.forEach(c => remaining[c.skill] = c.level);
+  for(const p of PARTS){
+    const contrib = contribByPart[p]; if(!contrib) continue;
+    let contributes = false;
+    for(const [sk, val] of Object.entries(contrib)){
+      if((remaining[sk]||0) > 0 && val > 0){ contributes = true; break; }
+    }
+    if(contributes){
+      shownParts.add(p);
+      for(const [sk, val] of Object.entries(contrib)){
+        if(remaining[sk] > 0) remaining[sk] = Math.max(0, remaining[sk] - val);
+      }
+    }
+    if(Object.values(remaining).every(v=>v===0)) break;
+  }
+}
+
+    // 装備テキスト
+    const eqParts = {};
+    for (const p of PARTS) {
+      eqParts[p] = shownParts.has(p) ? (itemsByPart[p].name || "") : "";
+    }
+    const equipText =
+      `頭：${eqParts["頭"]}\n胴：${eqParts["胴"]}\n腕：${eqParts["腕"]}\n腰：${eqParts["腰"]}\n脚：${eqParts["脚"]}`;
+
+    // 表示スキル（表示中の部位のみ）
+    let displaySkills = {};
+    const usedDriftSetDisplay = new Set();
+    for (const p of PARTS) {
+      if (!shownParts.has(p)) continue;
+      const item = itemsByPart[p];
+      for (const { name, lv } of (item.normal || [])) {
+        displaySkills[name] = (displaySkills[name] || 0) + lv;
+      }
+      if (driftEnabled) {
+        for (const ds of (item.drift || [])) {
+          usedDriftSetDisplay.add(ds);
+          displaySkills[ds] = (displaySkills[ds] || 0) + 1;
+        }
+      }
+    }
+
+    const allSkills = Object.entries(displaySkills)
+      .sort((a,b)=> (b[1]-a[1]) || a[0].localeCompare(b[0]));
+    const allSkillBadges = allSkills.map(([name,lv])=>{
+      const cls = condNames.has(name) ? "badge hilite" : "badge";
+      return `<li class="${cls}">${escapeHTML(name)} Lv${lv}</li>`;
+    }).join("");
+
+    const driftText = driftEnabled
+      ? (usedDriftSetDisplay.size ? `使用錬成スキル：${[...usedDriftSetDisplay].sort().map(escapeHTML).join(", ")}` : `使用錬成スキル：なし`)
+      : `使用錬成スキル：OFF`;
+
+    const html =
+      `<h3>#${hits.length+1}</h3>`+
+      `<p class="equip">${escapeHTML(equipText)}</p>`+
+      `<div class="hr"></div>`+
+      `<ul class="sumAll">${allSkillBadges}</ul>`+
+      `<p class="drifts">${driftText}</p>`;
+
+// ===== 重複防止：同じ防具は1回しか出さない =====
+const comboKey =
+  PARTS.map(p => shownParts.has(p) ? (itemsByPart[p]?.name || "") : "").join("|") + "|" +
+  Object.entries(displaySkills).sort().map(([n,l]) => `${n}:${l}`).join(",") + "|" +
+  [...usedDriftSetDisplay].sort().join(",");
+
+// 見た目が完全に同じ場合だけスキップ
+if (shownCombos.has(comboKey)) continue;
+shownCombos.add(comboKey);
+
+    hits.push(html);
+    if(hits.length >= MAX_OUT) break outer;
+  }
+
+  // 表示
+  resultsBox.innerHTML = "";
+  if(hits.length===0){
+    resultsBox.innerHTML = cardHTML("結果 0件", "条件に合う組み合わせは見つかりませんでした。");
+  }else{
+    hits.forEach(x=>{
+      const div=document.createElement('div');
+      div.className='card';
+      div.innerHTML = x;
+      resultsSim.appendChild(div);
+    });
+  }
+
+  const finalMsg = `探索完了：${checked.toLocaleString()} / ${totalLoops.toLocaleString()}（ヒット ${hits.length}件）`;
+  progressEl.textContent = finalMsg;
+  floatEl.textContent = finalMsg;
+}
+
+/* ====== 一覧タブ：構築＆フィルタ ====== */
+function buildListTable(){
+  const body = document.getElementById('listBody');
+  const countEl = document.getElementById('listCount');
+  const fltPart = document.getElementById('flt-part');
+  const fltSkill = document.getElementById('flt-skill');
+
+  function render(){
+    const kw = (fltSkill.value||"").trim();
+    const part = fltPart.value||"";
+    const rx = kw ? new RegExp(escapeRegExp(kw), 'i') : null;
+
+    const list = armors.filter(a=>{
+      if(part && a.part!==part) return false;
+
+      if(listDriftOnly){
+        // 錬成のみ
+        if(rx){
+          return a.drift.length>0 && rx.test(a.drift.join(", "));
+        }else{
+          return a.drift.length>0;
+        }
+      }else{
+        // 通常フィルタ
+        if(!rx) return true;
+        const normalStr = a.normal.map(s=>`${s.name}Lv${s.lv}`).join(", ");
+        const driftStr  = a.drift.join(", ");
+        return rx.test(a.name) || rx.test(a.monster||"") || rx.test(normalStr) || rx.test(driftStr);
+      }
+    });
+
+    body.innerHTML = list.map(a=>{
+      const normalStr = a.normal.map(s=>`${escapeHTML(s.name)}Lv${s.lv}`).join(", ");
+      const driftStr  = a.drift.length ? a.drift.map(escapeHTML).join(", ") : "—";
+      return `<tr>
+        <td>${escapeHTML(a.part)}</td>
+        <td>${escapeHTML(a.monster||"")}</td>
+        <td>${escapeHTML(a.name)}</td>
+        <td class="td-skills">${normalStr||"—"}</td>
+        <td class="td-skills">${driftStr}</td>
+      </tr>`;
+    }).join("");
+
+    countEl.textContent = `${list.length} 件表示（総計 ${armors.length}）` + (listDriftOnly ? "（錬成のみ）" : "");
+  }
+
+  fltPart.addEventListener('change', render);
+  fltSkill.addEventListener('input', render);
+  render();
+}
+
+/* ====== ユーティリティ ====== */
+function cardHTML(title, body){
+  return `<div class="card"><h3>${escapeHTML(title)}</h3><div class="hr"></div><div class="equip">${escapeHTML(body)}</div></div>`;
+}
+function escapeHTML(s){
+  return String(s).replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+}
+function escapeRegExp(s){
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+</script>
+</body>
+</html>
